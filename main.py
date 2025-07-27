@@ -1,4 +1,3 @@
-import os
 import io
 import logging
 from telebot import types, TeleBot
@@ -9,10 +8,11 @@ import re
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get bot token from environment variable
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is required")
+# Bot token - Replace with your actual bot token
+BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE'  # Replace this with your actual bot token from @BotFather
+
+if BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
+    raise ValueError("Please replace 'YOUR_BOT_TOKEN_HERE' with your actual bot token")
 
 bot = TeleBot(BOT_TOKEN)
 
@@ -66,11 +66,16 @@ def download_video(message: types.Message):
         duration = yt.length
         
         # Format duration
-        minutes = duration // 60
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
         seconds = duration % 60
-        duration_str = f"{minutes}:{seconds:02d}"
         
-        # Check video duration (limit to 6 hours for reasonable processing)
+        if hours > 0:
+            duration_str = f"{hours}:{minutes:02d}:{seconds:02d}"
+        else:
+            duration_str = f"{minutes}:{seconds:02d}"
+        
+        # Check video duration (limit to 6 hours)
         if duration > 21600:  # 6 hours
             bot.edit_message_text(
                 "❌ Video is too long (>6 hours). Please try a shorter video.",
@@ -87,29 +92,40 @@ def download_video(message: types.Message):
             parse_mode='Markdown'
         )
         
-        # Download video to buffer with timeout handling
+        # Download video to buffer
         buffer = io.BytesIO()
+        
+        # Try to get the best progressive stream first
         stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
         
         if not stream:
-            # Fallback to adaptive streams if no progressive stream available
-            video_stream = yt.streams.filter(adaptive=True, file_extension='mp4', only_video=True).order_by('resolution').desc().first()
-            if video_stream:
-                stream = video_stream
-            else:
-                # Final fallback to lowest resolution
-                stream = yt.streams.get_lowest_resolution()
+            # Fallback to any progressive stream
+            stream = yt.streams.filter(progressive=True).first()
         
-        # Check file size before downloading (approximate)
-        file_size_mb = stream.filesize / (1024 * 1024) if stream.filesize else 0
-        if file_size_mb > 2000:  # 2GB Telegram limit
+        if not stream:
+            # Final fallback to lowest resolution
+            stream = yt.streams.get_lowest_resolution()
+        
+        if not stream:
             bot.edit_message_text(
-                f"❌ Video file is too large ({file_size_mb:.1f}MB).\nTelegram limit is 2GB. Try a lower quality video.",
+                "❌ No downloadable streams found for this video.",
                 processing_msg.chat.id,
                 processing_msg.message_id
             )
             return
         
+        # Check approximate file size
+        if hasattr(stream, 'filesize') and stream.filesize:
+            file_size_mb = stream.filesize / (1024 * 1024)
+            if file_size_mb > 2000:  # 2GB Telegram limit
+                bot.edit_message_text(
+                    f"❌ Video file is too large ({file_size_mb:.1f}MB).\nTelegram limit is 2GB.",
+                    processing_msg.chat.id,
+                    processing_msg.message_id
+                )
+                return
+        
+        # Download to buffer
         stream.stream_to_buffer(buffer)
         buffer.seek(0)
         
@@ -139,12 +155,12 @@ def download_video(message: types.Message):
         
         error_message = "❌ Sorry, I couldn't download this video.\n\n"
         
-        if "Video unavailable" in str(e):
+        if "unavailable" in str(e).lower():
             error_message += "The video might be private, deleted, or geo-restricted."
-        elif "HTTP Error 403" in str(e):
+        elif "403" in str(e):
             error_message += "Access denied. The video might be age-restricted or private."
-        elif "regex_search" in str(e):
-            error_message += "Invalid YouTube URL format."
+        elif "timeout" in str(e).lower():
+            error_message += "Download timeout. Please try again."
         else:
             error_message += "Please try again later or with a different video."
         
