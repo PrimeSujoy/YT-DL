@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Bot token - Replace with your actual bot token
-BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE'  # Replace this with your actual bot token from @BotFather
+BOT_TOKEN = '7512725094:AAHpsyKM1ifxzGlW30Boi_uoeo0EBFgfR8k'  # Replace this with your actual bot token from @BotFather
 
 if BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
     raise ValueError("Please replace 'YOUR_BOT_TOKEN_HERE' with your actual bot token")
